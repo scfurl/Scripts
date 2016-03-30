@@ -1,9 +1,9 @@
-Normalization Scripts
-All scripts were run using R version 3.1
+###Normalization Scripts
+###All scripts were run using R version 3.1
 
-Human Microarrays:
+###Human Microarrays:
 
-###Redo HuGVHD By Day
+###HuGVHD By Day
 ###1501104 Final Publication of HuGVHD results
 
 remove(list=ls());
@@ -84,9 +84,9 @@ Normalization Non-Human Primate Microarrays:
 ###Network####
 ###
 # 151027
-# Network Analysis redo No multiple timepoints in breakthrough group
+# Network Analysis
 ####
-Sys.umask("002")
+
 remove(list=ls());
 graphics.off();
 os<-Sys.info()['sysname']
