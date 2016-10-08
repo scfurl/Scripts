@@ -105,6 +105,8 @@ saveRDS(unfilteredeset.ann, file=file.path(DATA_DIR, "HuUnfilteredeset.rds"))
 ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..groupbyday))
 PD<-new("PDObj", eset=finaleset.ann, ColObj=ColObj, LimmaObj=LimmaObjCreate(finaleset.ann, ColObj))
 
+MAboxplot("AURKA", PD)
+
 
 classvec.hs<-as.factor(finaleset.hs$group2)
 selected.hs<-levels(classvec.hs)
