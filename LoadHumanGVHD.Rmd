@@ -102,48 +102,9 @@ exprs(unfilteredeset.ann)<-combat_edata.ann
 saveRDS(unfilteredeset.ann, file=file.path(DATA_DIR, "HuUnfilteredeset.rds"))
 #unfilteredeset.ann<-readRDS(file.path(DATA_DIR, "HuUnfilteredeset.rds"))
 
-ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..groupbyday))
+colnames(pData(finaleset.ann))
+ColObj=ColObjCreate(as.factor(finaleset.ann$group2))
 PD<-new("PDObj", eset=finaleset.ann, ColObj=ColObj, LimmaObj=LimmaObjCreate(finaleset.ann, ColObj))
-
-MAboxplot("AURKA", PD)
-
-
-classvec.hs<-as.factor(finaleset.hs$group2)
-selected.hs<-levels(classvec.hs)
-colmatch.hs<-cols.hs$cols[match(selected.hs,cols.hs$group)]
-names(colmatch.hs)<-cols.hs$group[match(selected.hs,cols.hs$group)]
-gcolor.hs<-colmatch.hs[order(names(colmatch.hs))]
-gcolors.hs<-gcolor.hs[classvec.hs]
-data.hs<-exprs(finaleset.hs)
-alldata.hs<-exprs(unfilteredeset.hs)
-SelectionIndex.hs<-1:length(levels(classvec.hs))
-limma.obj<-GroupSelectionLocal(suff=".hs", classvec.hs, SelectionIndex.hs, data.hs, alldata.hs, cols.hs)
-
-colnames(alldata.hs)<-paste(classvec.hs,finaleset.hs$characteristics..patientID, sep=".")
-alldata.gsea.hs<-alldata.hs[,order(colnames(alldata.hs))]
-classvec.gsea.hs<-classvec.hs[order(colnames(alldata.hs))]
-# data.hs.ann<-masterannotate.hs(exprs(finaleset.hs))
-# finaleset.hs.ann<-finaleset.hs
-# exprs(finaleset.hs.ann)<-data.hs.ann
-# saveRDS(finaleset.hs.ann,file="HuGVHD_finaleset151103_ann.rds")
-# 
-# exprs(unfilteredeset.hs.ann)<-masterannotate.hs(exprs(unfilteredeset.hs))
-# saveRDS(unfilteredeset.hs.ann,file="HuGVHD_finaleset_unfilt_151103_ann.rds")
-MAboxplot5("IL1RAP", alldata.hs, limma.obj=NULL, classvec.hs, cols=gcolor.hs, stat.test="pairwiset", sampleNames=finaleset.hs@phenoData@data$characteristics..patientID)
-
-
-
-phenoData(finaleset.ann)<-phenoData.batch
-phenoData(unfilteredeset.ann)<-phenoData.batch
-ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..groupbyday))
-PD<-new("PDObj", eset=finaleset.ann, ColObj=ColObj, LimmaObj=LimmaObjCreate(finaleset.ann, ColObj))
-MAboxplot("AURKA", PD, stat.test="pairwiset", sampleNames=pData(finaleset.ann)$characteristics..patientID)
-pairwise.t.test(exprs(finaleset.ann)["AURKA",],finaleset.ann$characteristics..groupbyday, p.adjust.method="none")
-
-ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..group))
-PD<-new("PDObj", eset=finaleset.ann, ColObj=ColObj, LimmaObj=LimmaObjCreate(finaleset.ann, ColObj))
-MAboxplot("AURKA", PD, stat.test="pairwiset", sampleNames=pData(finaleset.ann)$characteristics..patientID)
-t.test(exprs(finaleset.ann)["AURKA",]~finaleset.ann$characteristics..group)
 ```
 
 
@@ -151,13 +112,23 @@ t.test(exprs(finaleset.ann)["AURKA",]~finaleset.ann$characteristics..group)
 unfilteredeset.hs<-unfilteredeset.ann
 rm(unfilteredeset.ann)
 alldata.hs<-exprs(unfilteredeset.hs)
-ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..groupbyday))
-PD<-new("PDObj", eset=unfilteredeset.hs, ColObj=ColObj, LimmaObj=LimmaObjCreate(unfilteredeset.hs, ColObj))
-MAboxplot("AURKA", PD, stat.test="pairwiset", sampleNames=pData(finaleset.ann)$characteristics..patientID)
-colnames(alldata.hs)<-paste(finaleset.ann$characteristics..groupbyday,finaleset.ann$sampleNames, sep=".")
+
+colnames(alldata.hs)<-paste(finaleset.ann$group2,finaleset.ann$Sample.name, sep=".")
 classvec.hs<-ColObj@classvec
 alldata.gsea.hs<-alldata.hs[,order(colnames(alldata.hs))]
 classvec.gsea.hs<-classvec.hs[order(colnames(alldata.hs))]
+```
+
+##Check Patient Assignments
+```{r, echo=F}
+animal.table<-data.frame(ID=paste(finaleset.hs@phenoData@data$characteristics..patientID, " Day-", finaleset.hs@phenoData@data$characteristics..day_post_HCT, finaleset.hs@phenoData@data$CEL.File, sep=""), Group=finaleset.hs@phenoData@data$group2, stringsAsFactors=F)
+animal.table.split<-split(animal.table$ID, as.factor(animal.table$Group))
+animal.table.split.df<-as.data.frame(t(do.call(rbind, lapply(animal.table.split, '[', 1:max(sapply(animal.table.split, length))))))
+tli.table <- xtable(animal.table.split.df)
+```
+
+```{r, echo=FALSE, results='asis'}
+print(tli.table, type="html", include.rownames=FALSE, booktabs=TRUE, floating=FALSE, scalebox=0.6)
 ```
 
 ``` {r save GSEA, echo=FALSE, results='hide'}
@@ -170,62 +141,74 @@ alldata.gct.hs<-alldata.hs[,order(colnames(alldata.hs))]
 gsea.write.gct(alldata.gct.hs, file.path(DATA_DIR, "HuGVHD-GVHDvNoGVHD.gct"))
 classvec.cls.hs<-classvec.hs[order(colnames(alldata.hs))]
 gsea.write.cls(classvec.cls.hs, file.path(DATA_DIR, "HuGVHD-GVHDvNoGVHD.gct.cls"))
-dir.create(file.path(RES_DIR, "Redo/"), showWarnings=FALSE)
-dir.create(file.path(RES_DIR, "Redo/GSEA/"), showWarnings=FALSE)
+dir.create(file.path(RES_DIR, "GSEA/"), showWarnings=FALSE)
 
-filen<-"~/Dropbox (Kean Lab)/AWS/Scott/Rproj/Network-WGCNA/WGCNA-Modules.xlsx"
-#file.exists(file)
-wb0<-loadWorkbook(filen)
-modnames<-getSheets(wb0)
-modnamesF<-modnames
-pie(rep(1,length(modnames)), col=modnames, labels=modnames)
-###RENAME MODULES####
-modnamesF[modnames=="lightyellow"]<-"orange"
-modnamesF[modnames=="turquoise"]<-"darkred"
-modnamesF[modnames=="cyan"]<-"pink"
-modnamesF[modnames=="salmon"]<-"darkmagenta"
-modnamesF[modnames=="brown"]<-"cyan"
-modnamesF[modnames=="darkred"]<-"turquoise"
-modlist<-list()
-for(i in modnames){
-  modlist[i]<-readWorksheet(wb0, sheet=i, startRow=1, endCol=2, header=FALSE)
-}
-oldmodlist<-modlist
-names(modlist)<-modnamesF
-names(modlist)
-pie(rep(1,length(modnamesF)), col=modnamesF, labels=modnamesF)
+par(mfrow=c(1,2))
+modlist<-readRDS(file.path(DATA_DIR, "WGCNA_modulelist.rds"))
 toGMT<-modlist
 ```
 
 
-##Day 28
+##Day 28 - Figure 7A
 ```{r run GSEA, echo=FALSE, message=FALSE, warning=FALSE, height=12, width=5}
-Comparison1<-"GVHD28"
-Comparison2<-"NoGVHD28"
-RES_DIR2<-file.path(RES_DIR, "Redo")
-MCGO<-MultipleClassGSEA(alldata.gsea.hs, Comparison1, Comparison2, toGMT, classvec=classvec.cls.hs, runGSEAcode=TRUE, reshuffling.type="gene.labels", directory<- RES_DIR2, uniquelabel="WGCNA-Modules")
+Comparison1<-"GVHD-28"
+Comparison2<-"No.GVHD-28"
+MCGO<-MultipleClassGSEA(alldata.gsea.hs, Comparison1, Comparison2, toGMT, classvec=classvec.cls.hs, runGSEAcode=TRUE, reshuffling.type="gene.labels", directory<- RES_DIR, uniquelabel="WGCNA-Modules")
 
 #MCGOpdf(MCGO, "GSEA/GSEA-NHP_2_3_4_5modules.pdf", gcolor.hs[1])
 directory<-paste(MCGO@ObjectInfo$Directory, MCGO@ObjectInfo$GSEACompList$Prefix[1], sep="")
 filelist<-as.list(paste(directory, list.files(directory)[grep('*.report*', list.files(directory))], sep="/"))
-PlotMultipleEnrichmentPlots(filelist[c(1,6,12,13)], names(toGMT)[c(1,15,12,4)])
+PlotMultipleEnrichmentPlots(filelist[c(1,5,11,12)], names(toGMT)[c(1,5,11,12)])
 #summaryfiles<-paste(directory, list.files(directory)[grep('*.SUMMARY*', list.files(directory))], sep="/")
 ExtractStats(MCGO,1)
 ```
 
-##Day 60
+##Day 60 - Figure 7B
 ```{r run GSEA2, echo=FALSE, message=FALSE, warning=FALSE, height=12, width=5}
-Comparison1<-"GVHD60"
-Comparison2<-"NoGVHD60"
-MCGO2<-MultipleClassGSEA(alldata.gsea.hs, Comparison1, Comparison2, toGMT, classvec=classvec.cls.hs, runGSEAcode=TRUE, reshuffling.type="gene.labels", directory<- RES_DIR2, uniquelabel="WGCNA-Modules")
+Comparison1<-"GVHD-60"
+Comparison2<-"No.GVHD-60"
+MCGO2<-MultipleClassGSEA(alldata.gsea.hs, Comparison1, Comparison2, toGMT, classvec=classvec.cls.hs, runGSEAcode=TRUE, reshuffling.type="gene.labels", directory<- RES_DIR, uniquelabel="WGCNA-Modules")
 
 #MCGOpdf(MCGO, "GSEA/GSEA-NHP_2_3_4_5modules.pdf", gcolor.hs[1])
 directory2<-paste(MCGO2@ObjectInfo$Directory, MCGO2@ObjectInfo$GSEACompList$Prefix[1], sep="")
 filelist2<-as.list(paste(directory2, list.files(directory2)[grep('*.report*', list.files(directory2))], sep="/"))
-PlotMultipleEnrichmentPlots(filelist2[c(1,6,12,13)], names(toGMT)[c(1,15,12,4)])
+PlotMultipleEnrichmentPlots(filelist2[c(1,5,11,12)], names(toGMT)[c(1,5,11,12)])
 #summaryfiles<-paste(directory, list.files(directory)[grep('*.SUMMARY*', list.files(directory))], sep="/")
 ExtractStats(MCGO2,1)
-summary(classvec.sel.hs)
+summary(classvec.cls.hs)
+```
+
+
+##Figure 7C FoldChange Heatmap
+```{r, echo=FALSE}
+###Create foldchange heatmap
+PD<-new("PDObj", eset=unfilteredeset.hs, ColObj=ColObj, LimmaObj=LimmaObjCreate(unfilteredeset.hs, ColObj))
+unlist(filelist2)
+PD@LimmaObj@Contrasts$meaning
+names(PD@LimmaObj@AllGenes[7])
+tmp<-read.delim(unlist(filelist2)[1])
+black<-as.character(tmp[tmp$CORE_ENRICHMENT=="YES",]$SYMBOL)
+df<-data.frame(D28=PD@LimmaObj@AllGenes[[7]][black,]$logFC,
+D60=PD@LimmaObj@AllGenes[[11]][black,]$logFC)
+rownames(df)<-black
+df<-logratio2foldchange(df)
+rsc<-c(rep("black", nrow(df)))
+heatmap.2(as.matrix(df), dendrogram="row", Rowv=TRUE, Colv=FALSE, scale="none", RowSideCol=rsc, col=gsea.col,  trace="none", density.info="none", main="LE Day 60 Black module Genes by Fold Change", cexCol=0.7)
+```
+
+###Supp. Table 9
+```{r}
+module<-c("orange", "black", "pink", "darkred")
+listout28<-list()
+for(i in module){
+  listout28[[i]]<-MCGO@Data[[i]][[1]][MCGO@Data[[i]][[1]]$ENRICHMENT=="YES",]
+}
+listout60<-list()
+for(i in module){
+  listout60[[i]]<-MCGO2@Data[[i]][[1]][MCGO2@Data[[i]][[1]]$ENRICHMENT=="YES",]
+}
+quickXL.list(file.path(RES_DIR, "FinalFigures", "SuppTable9-28.xlsx"), listout28)
+quickXL.list(file.path(RES_DIR, "FinalFigures", "SuppTable9-60.xlsx"), listout60)
 ```
 
 #Appendix
