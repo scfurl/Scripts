@@ -1,0 +1,235 @@
+---
+title: "HuGVHD data"
+author: "Scott Furlan"
+output: html_document
+---
+
+
+```{r, echo=FALSE, results='hide'}
+remove(list=ls());
+
+library(devtools)
+library(dendextend)
+library(Vennerable)
+library(probedeeper)
+library(XLConnect)
+library(simpleaffy)
+library(xtable)
+library(sva)
+library(made4)
+library(ellipse)
+library(ggplot2)
+
+###LOAD HuGVHD DATA####Load Data
+# -------------------------------------
+# specify key
+# -------------------------------------
+date<-"20160913"
+key<-""
+# -------------------------------------
+
+# -------------------------------------
+# find relative directory on Server
+# -------------------------------------
+setwd("~")
+ROOT_DIR="~/Dropbox (Kean Lab)/AWS/Scott"
+# -------------------------------------
+# specify paths and load functions
+# -------------------------------------
+DATA_DIR <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/data", sep="") # SPECIFY HERE
+DATA_DIR2 <- "~/Dropbox (Kean Lab)/LK NHP/Microarray/Data Files/CEL Files"
+PROG_DIR <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/prog", sep="")      # SPECIFY HERE
+RES_DIR  <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/res", sep="")      # SPECIFY HERE
+source(file.path(PROG_DIR, "SFFunc.R"))
+
+# -------------------------------------
+# load process data
+# -------------------------------------
+rmaTable<-read.csv(file.path(DATA_DIR, "HuGVHD.csv"))
+wb<-loadWorkbook(file.path(DATA_DIR, "HumanDirectoryofArrays.xlsx"))
+ws<-readWorksheet(wb, "Final")
+ToBatchCorrect<-ws
+colnames(rmaTable)
+endcolumn<-length(colnames(rmaTable))
+rmaTable.cut<-rmaTable[,1:endcolumn]
+rownames(rmaTable.cut)<-rmaTable.cut$Probe.Set.ID
+rmaTable.cut<-rmaTable.cut[,-1]
+colnames(rmaTable.cut)
+tmp<-strsplit(colnames(rmaTable.cut), ".Group6.")
+tmp2<-substring(unlist(lapply (tmp, "[[",1)),2)
+ToBatchCorrect$CEL.File %in% paste(tmp2, "CEL", sep=".")
+reorder<-match(ToBatchCorrect$CEL.File, paste(tmp2, "CEL", sep="."))
+pdata.batch<-ToBatchCorrect
+rmaTable.cut.reordered<-rmaTable.cut[,reorder]
+phenoData.batch<-AnnotatedDataFrame(data=pdata.batch)
+colnames(rmaTable.cut.reordered)
+colnames(rmaTable.cut.reordered)<-phenoData.batch$Sample.name
+rmaData<-ExpressionSet(assayData=as.matrix(rmaTable.cut.reordered), annotation="pd.hta.2.0")
+phenoData(rmaData)<-phenoData.batch
+rmaData$Sample.name
+colnames(exprs(rmaData))
+
+
+#ComBat
+batch = pdata.batch$characteristics..batch
+mod = model.matrix(~as.factor(characteristics..Hx_of_GVHD), data=pdata.batch)
+combat_edata = ComBat(dat=exprs(rmaData), batch=batch, mod=mod, numCovs=NULL, par.prior=TRUE, prior.plots=FALSE)
+combat_eset<-ExpressionSet(assayData=combat_edata)
+phenoData(combat_eset)<-phenoData(rmaData)
+annotation(combat_eset)<-annotation(rmaData)
+
+###Write Batch Corrected Data###
+write.csv(exprs(combat_eset), file=file.path(DATA_DIR,"HuGVHD_BATCHCorr.csv"))
+
+#Filter batch corrected
+celfiles.filtered <- nsFilter(combat_eset, require.entrez=FALSE, remove.dupEntrez=FALSE)
+filtered.eset<-celfiles.filtered$eset
+summary(as.factor(filtered.eset$group2))
+
+#####ANNOTATE, Clean up data######
+#annotate batch corrected
+annotationfile<-file.path(ROOT_DIR, "Bioinformatics Resources", "Human Annotation", "MasterHumanTable.csv")
+data.ann<-annotatePerFile(exprs(filtered.eset), file=annotationfile, probecode="ProbesetID", genecode="GeneSymbol")
+finaleset.ann<-filtered.eset
+exprs(finaleset.ann)<-data.ann
+saveRDS(finaleset.ann, file=file.path(DATA_DIR, "HuFinaleset.rds"))
+
+#finaleset.ann<-readRDS(file=file.path(DATA_DIR, ""HuFinaleset.rds"))
+
+unfilteredeset.ann<-filtered.eset
+combat_edata.ann<-annotatePerFile(combat_edata, file=annotationfile, probecode="ProbesetID", genecode="GeneSymbol")
+exprs(unfilteredeset.ann)<-combat_edata.ann
+saveRDS(unfilteredeset.ann, file=file.path(DATA_DIR, "HuUnfilteredeset.rds"))
+#unfilteredeset.ann<-readRDS(file.path(DATA_DIR, "HuUnfilteredeset.rds"))
+
+ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..groupbyday))
+PD<-new("PDObj", eset=finaleset.ann, ColObj=ColObj, LimmaObj=LimmaObjCreate(finaleset.ann, ColObj))
+
+
+classvec.hs<-as.factor(finaleset.hs$group2)
+selected.hs<-levels(classvec.hs)
+colmatch.hs<-cols.hs$cols[match(selected.hs,cols.hs$group)]
+names(colmatch.hs)<-cols.hs$group[match(selected.hs,cols.hs$group)]
+gcolor.hs<-colmatch.hs[order(names(colmatch.hs))]
+gcolors.hs<-gcolor.hs[classvec.hs]
+data.hs<-exprs(finaleset.hs)
+alldata.hs<-exprs(unfilteredeset.hs)
+SelectionIndex.hs<-1:length(levels(classvec.hs))
+limma.obj<-GroupSelectionLocal(suff=".hs", classvec.hs, SelectionIndex.hs, data.hs, alldata.hs, cols.hs)
+
+colnames(alldata.hs)<-paste(classvec.hs,finaleset.hs$characteristics..patientID, sep=".")
+alldata.gsea.hs<-alldata.hs[,order(colnames(alldata.hs))]
+classvec.gsea.hs<-classvec.hs[order(colnames(alldata.hs))]
+# data.hs.ann<-masterannotate.hs(exprs(finaleset.hs))
+# finaleset.hs.ann<-finaleset.hs
+# exprs(finaleset.hs.ann)<-data.hs.ann
+# saveRDS(finaleset.hs.ann,file="HuGVHD_finaleset151103_ann.rds")
+# 
+# exprs(unfilteredeset.hs.ann)<-masterannotate.hs(exprs(unfilteredeset.hs))
+# saveRDS(unfilteredeset.hs.ann,file="HuGVHD_finaleset_unfilt_151103_ann.rds")
+MAboxplot5("IL1RAP", alldata.hs, limma.obj=NULL, classvec.hs, cols=gcolor.hs, stat.test="pairwiset", sampleNames=finaleset.hs@phenoData@data$characteristics..patientID)
+
+
+
+phenoData(finaleset.ann)<-phenoData.batch
+phenoData(unfilteredeset.ann)<-phenoData.batch
+ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..groupbyday))
+PD<-new("PDObj", eset=finaleset.ann, ColObj=ColObj, LimmaObj=LimmaObjCreate(finaleset.ann, ColObj))
+MAboxplot("AURKA", PD, stat.test="pairwiset", sampleNames=pData(finaleset.ann)$characteristics..patientID)
+pairwise.t.test(exprs(finaleset.ann)["AURKA",],finaleset.ann$characteristics..groupbyday, p.adjust.method="none")
+
+ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..group))
+PD<-new("PDObj", eset=finaleset.ann, ColObj=ColObj, LimmaObj=LimmaObjCreate(finaleset.ann, ColObj))
+MAboxplot("AURKA", PD, stat.test="pairwiset", sampleNames=pData(finaleset.ann)$characteristics..patientID)
+t.test(exprs(finaleset.ann)["AURKA",]~finaleset.ann$characteristics..group)
+```
+
+
+```{r, echo=FALSE, message=FALSE}
+unfilteredeset.hs<-unfilteredeset.ann
+rm(unfilteredeset.ann)
+alldata.hs<-exprs(unfilteredeset.hs)
+ColObj=ColObjCreate(as.factor(finaleset.ann$characteristics..groupbyday))
+PD<-new("PDObj", eset=unfilteredeset.hs, ColObj=ColObj, LimmaObj=LimmaObjCreate(unfilteredeset.hs, ColObj))
+MAboxplot("AURKA", PD, stat.test="pairwiset", sampleNames=pData(finaleset.ann)$characteristics..patientID)
+colnames(alldata.hs)<-paste(finaleset.ann$characteristics..groupbyday,finaleset.ann$sampleNames, sep=".")
+classvec.hs<-ColObj@classvec
+alldata.gsea.hs<-alldata.hs[,order(colnames(alldata.hs))]
+classvec.gsea.hs<-classvec.hs[order(colnames(alldata.hs))]
+```
+
+``` {r save GSEA, echo=FALSE, results='hide'}
+##Check Samples
+phenoData(unfilteredeset.hs)$characteristics..patientID
+
+###Write GCT/CLS Files
+colnames(alldata.hs)<-paste(classvec.hs,finaleset.ann$sampleNames, sep=".")
+alldata.gct.hs<-alldata.hs[,order(colnames(alldata.hs))]
+gsea.write.gct(alldata.gct.hs, file.path(DATA_DIR, "HuGVHD-GVHDvNoGVHD.gct"))
+classvec.cls.hs<-classvec.hs[order(colnames(alldata.hs))]
+gsea.write.cls(classvec.cls.hs, file.path(DATA_DIR, "HuGVHD-GVHDvNoGVHD.gct.cls"))
+dir.create(file.path(RES_DIR, "Redo/"), showWarnings=FALSE)
+dir.create(file.path(RES_DIR, "Redo/GSEA/"), showWarnings=FALSE)
+
+filen<-"~/Dropbox (Kean Lab)/AWS/Scott/Rproj/Network-WGCNA/WGCNA-Modules.xlsx"
+#file.exists(file)
+wb0<-loadWorkbook(filen)
+modnames<-getSheets(wb0)
+modnamesF<-modnames
+pie(rep(1,length(modnames)), col=modnames, labels=modnames)
+###RENAME MODULES####
+modnamesF[modnames=="lightyellow"]<-"orange"
+modnamesF[modnames=="turquoise"]<-"darkred"
+modnamesF[modnames=="cyan"]<-"pink"
+modnamesF[modnames=="salmon"]<-"darkmagenta"
+modnamesF[modnames=="brown"]<-"cyan"
+modnamesF[modnames=="darkred"]<-"turquoise"
+modlist<-list()
+for(i in modnames){
+  modlist[i]<-readWorksheet(wb0, sheet=i, startRow=1, endCol=2, header=FALSE)
+}
+oldmodlist<-modlist
+names(modlist)<-modnamesF
+names(modlist)
+pie(rep(1,length(modnamesF)), col=modnamesF, labels=modnamesF)
+toGMT<-modlist
+```
+
+
+##Day 28
+```{r run GSEA, echo=FALSE, message=FALSE, warning=FALSE, height=12, width=5}
+Comparison1<-"GVHD28"
+Comparison2<-"NoGVHD28"
+RES_DIR2<-file.path(RES_DIR, "Redo")
+MCGO<-MultipleClassGSEA(alldata.gsea.hs, Comparison1, Comparison2, toGMT, classvec=classvec.cls.hs, runGSEAcode=TRUE, reshuffling.type="gene.labels", directory<- RES_DIR2, uniquelabel="WGCNA-Modules")
+
+#MCGOpdf(MCGO, "GSEA/GSEA-NHP_2_3_4_5modules.pdf", gcolor.hs[1])
+directory<-paste(MCGO@ObjectInfo$Directory, MCGO@ObjectInfo$GSEACompList$Prefix[1], sep="")
+filelist<-as.list(paste(directory, list.files(directory)[grep('*.report*', list.files(directory))], sep="/"))
+PlotMultipleEnrichmentPlots(filelist[c(1,6,12,13)], names(toGMT)[c(1,15,12,4)])
+#summaryfiles<-paste(directory, list.files(directory)[grep('*.SUMMARY*', list.files(directory))], sep="/")
+ExtractStats(MCGO,1)
+```
+
+##Day 60
+```{r run GSEA2, echo=FALSE, message=FALSE, warning=FALSE, height=12, width=5}
+Comparison1<-"GVHD60"
+Comparison2<-"NoGVHD60"
+MCGO2<-MultipleClassGSEA(alldata.gsea.hs, Comparison1, Comparison2, toGMT, classvec=classvec.cls.hs, runGSEAcode=TRUE, reshuffling.type="gene.labels", directory<- RES_DIR2, uniquelabel="WGCNA-Modules")
+
+#MCGOpdf(MCGO, "GSEA/GSEA-NHP_2_3_4_5modules.pdf", gcolor.hs[1])
+directory2<-paste(MCGO2@ObjectInfo$Directory, MCGO2@ObjectInfo$GSEACompList$Prefix[1], sep="")
+filelist2<-as.list(paste(directory2, list.files(directory2)[grep('*.report*', list.files(directory2))], sep="/"))
+PlotMultipleEnrichmentPlots(filelist2[c(1,6,12,13)], names(toGMT)[c(1,15,12,4)])
+#summaryfiles<-paste(directory, list.files(directory)[grep('*.SUMMARY*', list.files(directory))], sep="/")
+ExtractStats(MCGO2,1)
+summary(classvec.sel.hs)
+```
+
+#Appendix
+```{r Appendix,echo=FALSE}
+sessionInfo()
+getwd()
+```
+
+
