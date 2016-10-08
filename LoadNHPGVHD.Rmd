@@ -1,0 +1,287 @@
+---
+title: "160819 - Load Published NHP data for Blood Manuscript"
+author: "Scott Furlan"
+output: html_document
+---
+
+
+```{r, echo=FALSE, results='hide'}
+remove(list=ls());
+library(devtools)
+library(dendextend)
+library(Vennerable)
+library(probedeeper)
+library(XLConnect)
+library(simpleaffy)
+library(xtable)
+library(sva)
+library(made4)
+library(ellipse)
+library(ggplot2)
+library(gplots)
+
+###LOAD NHP DATA####Load Data
+# -------------------------------------
+# specify key
+# -------------------------------------
+date<-"20160819"
+key<-""
+# -------------------------------------
+
+# -------------------------------------
+# find relative directory on Server
+# -------------------------------------
+setwd("~")
+ROOT_DIR<-"~/Dropbox (Kean Lab)/AWS/Scott"
+# -------------------------------------
+# specify paths and load functions
+# -------------------------------------
+DATA_DIR <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/data", sep="") # SPECIFY HERE
+DATA_DIR2 <- "~/Dropbox (Kean Lab)/LK NHP/Microarray/Data Files/CEL Files"
+PROG_DIR <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/prog", sep="")      # SPECIFY HERE
+RES_DIR  <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/res", sep="")      # SPECIFY HERE
+source(file.path(PROG_DIR, "SFFunc.R"))
+finaleset.nhp<-readRDS(file.path(DATA_DIR, "finaleset"))
+unfilteredeset.nhp<-readRDS(file.path(DATA_DIR, "unfilteredeset"))
+
+# -------------------------------------
+# load color NHP
+# -------------------------------------
+color.wb<-loadWorkbook(file.path(DATA_DIR, "BreakthroughColor.xlsx"))
+color.ws<-readWorksheet(color.wb, "BreakthroughColor", header=TRUE)
+ColObj.nhp<-new("ColObj", assign=color.ws, classvec=as.factor(finaleset.nhp$NetworkGroup))
+ColObj.nhp<-ColObjInit(ColObj.nhp, LD=70)
+```
+
+##Check Assignments
+```{r, echo=F}
+animal.table<-data.frame(ID=paste(finaleset.nhp@phenoData@data$ID, " Day-", finaleset.nhp@phenoData@data$Day, sep=""), Group=ColObj.nhp@classvec, ArrayTimePoint=finaleset.nhp@phenoData@data$Group, stringsAsFactors=F)
+animal.table.split<-split(animal.table$ID, as.factor(animal.table$Group))
+animal.table.split.df<-as.data.frame(t(do.call(rbind, lapply(animal.table.split, '[', 1:max(sapply(animal.table.split, length))))))
+tli.table <- xtable(animal.table.split.df)
+```
+
+```{r, echo=FALSE, results='asis'}
+print(tli.table, type="html", include.rownames=FALSE, booktabs=TRUE, floating=FALSE, scalebox=0.6)
+```
+
+
+###LIMMA
+```{r, echo=FALSE}
+PD<-new("PDObj", eset=unfilteredeset, ColObj=ColObj.nhp, LimmaObj=LimmaObjCreate(unfilteredeset, ColObj.nhp))
+```
+
+##Figure 2C Colors
+```{r}
+step1<-40
+step2<-40
+line<-vector()
+fill<-vector()
+line[1]<-"#931a1d"
+fill[1]<-LightenDarkenColor(line[1], step1)
+line[2]<-LightenDarkenColor(line[1], step2)
+fill[2]<-LightenDarkenColor(line[2], step1)
+line[3]<-LightenDarkenColor(line[2], step2)
+fill[3]<-LightenDarkenColor(line[3], step1)
+line[4]<-LightenDarkenColor(line[3], step2)
+fill[4]<-LightenDarkenColor(line[4], step1)
+pie(rep(1,4), col=fill, labels=fill)
+pie(rep(1,4), col=line, labels=line)
+
+step1<-40
+step2<-30
+lineb<-vector()
+fillb<-vector()
+start<-"#F7931D"
+lineb[1]<-LightenDarkenColor(start, -50)
+fillb[1]<-LightenDarkenColor(lineb[1], step1)
+lineb[2]<-LightenDarkenColor(lineb[1], step2)
+fillb[2]<-LightenDarkenColor(lineb[2], step1)
+lineb[3]<-LightenDarkenColor(lineb[2], step2)
+fillb[3]<-LightenDarkenColor(lineb[3], step1)
+lineb[4]<-LightenDarkenColor(lineb[3], step2)
+fillb[4]<-LightenDarkenColor(lineb[4], step1)
+pie(rep(1,4), col=fillb, , labels=fillb)
+pie(rep(1,4), col=lineb, , labels=lineb)
+```
+
+
+#Figure 3A
+``` {r Survival, echo=FALSE}
+sel<-ColObj.nhp@classvec=="Breakthrough" | ColObj.nhp@classvec=="Primary"
+pcadata<-t(exprs(finaleset.nhp)[,sel])
+
+rownames(pcadata)<-make.unique(rownames(pcadata))
+pca1 <- dudi.pca(pcadata, scann = FALSE, nf=10)
+s.class(dfxy = pca1$li, fac = ColObj.nhp@classvec[sel], xax = 1, yax = 3)
+```
+
+#Figure 3B
+```{r}
+pcadata<-t(exprs(finaleset.nhp))
+#pcadata<-t(data.sel.nhp)
+rownames(pcadata)<-make.unique(rownames(pcadata))
+pca1 <- dudi.pca(pcadata, scann = FALSE, nf=10)
+
+###PCA SURV###
+selectionindex<-vector()
+selectionindex[!is.na(suppressWarnings(as.numeric(finaleset.nhp$Survival)))]<-"TRUE"
+selectionindex[ColObj.nhp@classvec=="Controlled"]<-"FALSE"
+selectionindex[is.na(selectionindex)]<-"FALSE"
+selectionindex<-as.logical(selectionindex)
+Survival.sel<-as.numeric(finaleset.nhp$Survival[selectionindex])
+lm.df<-data.frame(PC1=as.numeric(pca1$li$Axis1[selectionindex]), Survival=as.numeric(log(Survival.sel)), Group=as.factor(as.character(ColObj.nhp@classvec[selectionindex])))
+reg1<-(lm(PC1~Survival, lm.df))
+summary(reg1)
+anova(reg1)
+lm.df.melt<-melt(lm.df)
+g<-ggplot()+
+  geom_point(data=lm.df, aes(x=Survival, y=PC1), col=ColObj.nhp@full$line[selectionindex], size=3)+
+  geom_smooth(data=lm.df, aes(x=Survival, y=PC1), method=lm)+
+  theme_bw()+
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank())+
+  theme(axis.ticks.y = element_blank(), axis.text.y = element_blank())+
+  labs(x="log Survival", y="PC1")
+print(g)
+```
+
+
+
+
+#Figure 1C
+```{r}
+library(survival)
+survobj<-Surv(Survival.sel)
+survfit<-survfit(survobj~lm.df$Group)
+plot(survfit, col=ColObj.nhp@match$line[c(2,5)])
+print(survfit)
+```
+
+#Make GSEA Files
+```{r}
+###GSEA Data###
+data.sel.nhp<-exprs(finaleset)
+classvec.sel.nhp<-ColObj.nhp@classvec
+data.gct.nhp<-data.sel.nhp[,order(classvec.sel.nhp)]
+colnames(data.gct.nhp)<-make.unique(as.character(classvec.sel.nhp)[order(classvec.sel.nhp)])
+gsea.write.gct(data.gct.nhp, file.path(DATA_DIR, "NHP_Allnetworkmodules.gct"))
+classvec.sel.cls.nhp<-classvec.sel.nhp[order(classvec.sel.nhp)]
+gsea.write.cls(as.factor(classvec.sel.cls.nhp), file.path(DATA_DIR, "NHP_Allnetworkmodules.cls"))
+GSEA.ReadClsFile(file.path(DATA_DIR, "NHP_Allnetworkmodules.cls"))
+```
+
+#Figure 3C + 4A
+####ssGSEA data were generated using the GenepPattern Server using the following input files
+1. NHP_Allnetworkmodules.gct
+2. NHP_Allnetworkmodules.cls
+
+####Output file is ssGSEA_masterDB_nodupes.gct
+
+####The ConstellationMapping code was run on GenePattern Server and had output details summarized in the following textfiles
+1. PrimaryUpConstellationMap.txt
+2. BreakthroughUpConstellationMap.txt
+####Input files included
+1. ssGSEA_masterDB_nodupes.gct
+2. NHP_Allnetworkmodules.cls
+
+
+#Figure 3D
+```{r}
+Comparison1<-"Primary"
+Comparison2<-c("Healthy.Control", "Breakthrough")
+masterDB<-readGMT.SF(file.path(DATA_DIR, "MSigDBALL.gmt"))
+toGMT<-masterDB[grep("GSE14308",names(masterDB))]
+MCGO3<-MultipleClassGSEA(data.gct.nhp,
+                         Comparison1, Comparison2, toGMT, 
+                         classvec=as.factor(classvec.sel.cls.nhp),
+                         runGSEAcode=TRUE, reshuffling.type="gene.labels",
+                         uniquelabel="GSE14308-rearranged-PvOthers",
+                         directory=DATA_DIR)
+```
+
+#Figure4C
+```{r}
+MAboxplot("MKI67", PD, reorder=c(4,1,5,3,2))
+MAboxplot("GZMB", PD, reorder=c(4,1,5,3,2))
+```
+
+
+##Figure 4C Pivot Transcripts
+```{r}
+limmaObj<- LimmaObjCreate(finaleset, ColObj.nhp, lfc.thresh=0.5)
+slotNames(limmaObj)
+str(limmaObj@Contrasts)
+limmaObj@Contrasts$meaning
+limmaObj2<- LimmaObjCreate(unfilteredeset, ColObj.nhp, lfc.thresh=0.5)
+
+Symbol<-rownames(limmaObj@DEGenes[[14]])[rownames(limmaObj@DEGenes[[14]]) %in% rownames(limmaObj@DEGenes[[16]])]
+colnames(limmaObj@DEGenes[[14]])
+X<-limmaObj@DEGenes[[14]][Symbol,]$logFC
+Y<-limmaObj@DEGenes[[16]][Symbol,]$logFC
+t<--log(limmaObj@DEGenes[[14]][Symbol,]$adj.P.Val)
+df<-data.frame(Symbol=Symbol, X=X, Y=Y, t=t)
+ggplot(df)+
+  geom_point(aes(x=X, y=Y, size=t))
+
+Symbol<-rownames(limmaObj@AllGenes[[14]])[rownames(limmaObj@AllGenes[[14]]) %in% rownames(limmaObj@AllGenes[[16]])]
+colnames(limmaObj@AllGenes[[14]])
+X<-limmaObj@AllGenes[[14]][Symbol,]$logFC
+Y<-limmaObj@AllGenes[[16]][Symbol,]$logFC
+t<--log(limmaObj@AllGenes[[14]][Symbol,]$adj.P.Val)
+df2<-data.frame(Symbol=Symbol, X=X, Y=Y, t=t)
+Color<-vector()
+Color[which(df2$Symbol %in% df$Symbol)]<-"red"
+Color[which(!df2$Symbol %in% df$Symbol)]<-"black"
+df2$Color<-Color
+
+BTUP<-as.character(df$Symbol[intersect(which(df$X>0), which(df$Y<0))])
+PUP<-as.character(df$Symbol[intersect(which(df$X<0), which(df$Y>0))])
+df3<-df[df$Symbol %in% c(BTUP, PUP),]
+
+
+ggplot(df2)+
+  geom_point(aes(x=X, y=Y, size=t), colour="black", alpha=0.1)+
+  geom_point(data=df, aes(x=X, y=Y, size=t), colour="blue", alpha=0.2)+
+  geom_point(data=df3, aes(x=X, y=Y, size=t), colour="red")+
+  geom_text(data=df3, aes(x=X, y=Y, label=Symbol), hjust=0, vjust=0, colour="red")+
+  theme_bw()
+```
+
+
+##Figure 4D Hill Heatmap
+###1. DE list of Breakthrough vs Auto vs transcripts listed in the Hill paper.
+``` {r, echo=FALSE}
+#Hill
+con<-file(file.path(DATA_DIR, "Hill.txt"))
+HILL_UP<-toupper(unlist(strsplit(readLines(con, warn="FALSE")[1], " ")))
+HILL_DOWN<-toupper(unlist(strsplit(readLines(con, warn="FALSE")[2], " ")))
+close(con)
+Hill<-c(HILL_UP, HILL_DOWN)
+
+df<-data.frame(Gene=rownames(PD@LimmaObj@AllGenes[[1]][Hill,]), BvA=PD@LimmaObj@AllGenes[[1]][Hill,1], BvHC=PD@LimmaObj@AllGenes[[14]][Hill,1])
+mat<-as.matrix(df[,2:3])
+rownames(mat)<-df$Gene
+dir<-vector()
+dir[1:12]<-df$BvHC[1:12]>0
+dir[13:24]<-df$BvHC[13:24]<0
+names(dir)<-as.character(df$Gene)
+dir2<-vector()
+dir2[1:12]<-df$BvA[1:12]>0
+dir2[13:24]<-df$BvA[13:24]<0
+names(dir2)<-as.character(df$Gene)
+dir2
+
+dir3<-dir2 | dir
+rmat<-t(as.matrix(cbind(c("Black", "Grey")[as.factor(dir3)], RowSide)))
+heatmap.3(mat, dendrogram="none", Rowv=FALSE, scale="none", col=gsea.col, RowSideColors=rmat, trace="none", density.info="none", cexCol = 2, main="RowSide by Auto OR HC")
+```
+
+
+
+#Appendix
+```{r Appendix,echo=FALSE}
+sessionInfo()
+getwd()
+```
+
+

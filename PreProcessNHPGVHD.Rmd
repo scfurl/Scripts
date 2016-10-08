@@ -1,0 +1,122 @@
+---
+title: "Preprocess NHP GVHD"
+author: "Scott Furlan"
+output: html_document
+---
+
+
+```{r}
+remove(list=ls());
+library(devtools)
+library(dendextend)
+library(Vennerable)
+library(probedeeper)
+library(XLConnect)
+library(simpleaffy)
+library(xtable)
+library(sva)
+library(made4)
+library(ellipse)
+library(ggplot2)
+
+###LOAD NHP DATA####Load Data
+# -------------------------------------
+# specify key
+# -------------------------------------
+date<-"20160819"
+key<-""
+# -------------------------------------
+
+# -------------------------------------
+# find relative directory on Server
+# -------------------------------------
+setwd("~")
+ROOT_DIR<-"~/Dropbox (Kean Lab)/AWS/Scott"
+# -------------------------------------
+# specify paths and load functions
+# -------------------------------------
+DATA_DIR <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/data", sep="") # SPECIFY HERE
+DATA_DIR2 <- "~/Dropbox (Kean Lab)/LK NHP/Microarray/Data Files/CEL Files"
+PROG_DIR <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/prog", sep="")      # SPECIFY HERE
+RES_DIR  <- paste(ROOT_DIR, "/FinalAnalysis/Published/Scripts_BTGVHD/res", sep="")      # SPECIFY HERE
+source(file.path(PROG_DIR, "SFFunc.R"))
+
+#### RMA NORMALIZATION#####
+wb<-loadWorkbook(file.path(DATA_DIR, "DirectoryofArrays.xlsx"))
+ws<-readWorksheet(wb, "Main")
+setwd(DATA_DIR2)
+textfileN<-"NetworkAnalysis.txt"
+write.table(ws[,1:11], textfileN, row.names=FALSE, quote=FALSE)
+celfiles<-read.affy(covdesc=textfileN)
+
+color.wb<-loadWorkbook(file.path(DATA_DIR, "BreakthroughColor.xlsx"))
+color.ws<-readWorksheet(color.wb, "BreakthroughColor", header=TRUE)
+ColObj.nhp.nhp<-new("ColObj.nhp", assign=color.ws, classvec=as.factor(finaleset.nhp$NetworkGroup))
+ColObj.nhp.nhp<-ColObj.nhpInit(ColObj.nhp.nhp, LD=70)
+
+####Check included samples###
+paste(celfiles$Group, celfiles$ID, celfiles$NetworkGroup)
+####Add phenodata###
+phenoData<-AnnotatedDataFrame(data=ws)
+celfiles.rma<-rma(celfiles)
+phenoData(celfiles.rma)<-phenoData
+#acquire phenodata
+pheno = pData(celfiles.rma)
+#acquire expression data
+edata = exprs(celfiles.rma)
+#Create model
+mod = model.matrix(~as.factor(NetworkGroup), data=pheno)
+
+#ComBat
+batch = pheno$Batch
+combat_edata = ComBat(dat=exprs(celfiles.rma), batch=batch, mod=mod, numCovs=NULL, par.prior=TRUE, prior.plots=FALSE)
+combat_eset<-ExpressionSet(assayData=combat_edata)
+phenoData(combat_eset)<-phenoData(celfiles.rma)
+pData(combat_eset)<-pData(celfiles.rma)
+annotation(combat_eset)<-annotation(celfiles.rma)
+
+###Filtering###
+celfiles.filtered <- nsFilter(combat_eset, require.entrez=FALSE, remove.dupEntrez=FALSE, var.cutoff=0.5, var.func=var)
+finaleset<-celfiles.filtered$eset
+nrow(exprs(finaleset))
+#exprs(finaleset)["MmuSTS.678.1.S1_at",]
+#exprs(finaleset)["MmugDNA.10007.1.S1_at",]
+#finaleset<-combat_eset
+clusterlabels<-pheno$Group
+colnames(exprs(finaleset))<-clusterlabels
+distance <- dist(t(exprs(finaleset)),method="maximum")
+clusters <- hclust(distance)
+
+
+#####ANNOTATE, Clean up data######
+finaleset.ann<-masterannotate(exprs(finaleset))
+exprs(finaleset)<-finaleset.ann
+nrow(exprs(finaleset))
+saveRDS(finaleset,file=file.path(DATA_DIR, "finaleset"))
+unfilteredeset<-finaleset
+combat_edata.ann<-masterannotate(combat_edata)
+exprs(unfilteredeset)<-combat_edata.ann
+nrow(exprs(unfilteredeset))
+nrow(exprs(finaleset))
+saveRDS(unfilteredeset, file=file.path(DATA_DIR, "unfilteredeset"))
+```
+
+##QC
+```{r}
+hist(celfiles,type="l", col=ColObj.nhp@full$line, main = "Histogram of raw data")
+SFHist(exprs(celfiles.rma), ColObj.nhp@full$line, "RMA Corrected")
+boxplot(exprs(celfiles.rma), col=ColObj.nhp@full$line, main="RMA Corrected")
+SFHist(combat_edata, ColObj.nhp@full$line, "RMA + Batch Corrected")
+boxplot(combat_edata, col=ColObj.nhp@full$line, main="RMA + Batch Corrected")
+SFHist(exprs(finaleset), ColObj.nhp@full$line, "RMA + Batch Corrected + Filtered + Annotated")
+boxplot(exprs(finaleset), col=ColObj.nhp@full$line, main="RMA + Batch Corrected + Filtered + Annotated")
+SFHist(exprs(unfilteredeset), ColObj.nhp@full$line, "RMA + Batch Corrected + Annotated")
+boxplot(exprs(unfilteredeset), col=ColObj.nhp@full$line, main="RMA + Batch Corrected + Annotated")
+```
+
+#Appendix
+```{r Appendix,echo=FALSE}
+sessionInfo()
+getwd()
+```
+
