@@ -13,8 +13,8 @@ Affiliations:
 3 Emory University School of Medicine, Atlanta GA
 *Corresponding Author
 
-Corresponding Author Email:  Leslie S. Kean, email: leslie.kean@seattlechildrens.org
-First Author Email: Scott N. Furlan – sfurlan@uw.edu
+Corresponding Author Email:  Leslie S. Kean, email: leslie.kean at seattlechildrens.org
+First Author Email: Scott N. Furlan – sfurlan at uw.edu
 
 Key Points:
 1.	The transcriptional networks controlling Breakthrough Acute GVHD can be mapped, and correlate closely with clinical disease.
